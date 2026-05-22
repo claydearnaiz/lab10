@@ -139,6 +139,14 @@ For a USB webcam:
 python lab10_pi_app.py --camera opencv --camera-device 0
 ```
 
+For a USB webcam with a live preview window:
+
+```bash
+python lab10_pi_app.py --camera opencv --camera-device 0 --preview
+```
+
+In preview mode, press `c` or Space to classify the current frame, and press `q` to quit.
+
 The defaults are:
 
 ```text

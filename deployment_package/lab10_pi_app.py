@@ -482,6 +482,93 @@ def run_button_loop(args, interpreter, labels: list[str], input_details: dict) -
         source.close()
 
 
+def run_opencv_preview(args, interpreter, labels: list[str], input_details: dict) -> None:
+    if args.camera != "opencv":
+        raise ValueError("--preview currently works with --camera opencv only")
+
+    import cv2
+
+    camera = cv2.VideoCapture(args.camera_device)
+    if not camera.isOpened():
+        raise RuntimeError(f"Could not open USB camera device {args.camera_device}")
+
+    leds = LedBoard(args.led_pins, labels, args.dry_run)
+    window_name = "Lab 10 USB Webcam Preview"
+    status_text = "Press c/Space to classify, q to quit"
+    led_off_at = 0.0
+
+    print("Preview ready.")
+    print("Keyboard: c or Space = capture/classify, q = quit")
+
+    try:
+        while True:
+            ok, frame = camera.read()
+            if not ok:
+                raise RuntimeError("Could not read a frame from the USB camera")
+
+            if led_off_at and time.perf_counter() >= led_off_at:
+                leds.all_off()
+                led_off_at = 0.0
+
+            display = frame.copy()
+            cv2.putText(
+                display,
+                status_text,
+                (12, 28),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),
+                2,
+                cv2.LINE_AA,
+            )
+            cv2.imshow(window_name, display)
+
+            key = cv2.waitKey(1) & 0xFF
+            if key in {ord("q"), 27}:
+                break
+
+            if key not in {ord("c"), ord(" ")}:
+                continue
+
+            response_start = time.perf_counter()
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(rgb, mode="RGB")
+
+            if args.save_captures:
+                saved_path = save_capture(image, args.save_captures)
+                print(f"Saved capture: {saved_path}")
+
+            prediction = run_prediction_once(interpreter, labels, input_details, image)
+            response_ms = (time.perf_counter() - response_start) * 1000.0
+
+            led_index = (
+                prediction.index if prediction.confidence >= args.confidence_threshold else None
+            )
+            leds.show_class(led_index)
+            led_off_at = time.perf_counter() + args.display_seconds
+
+            status_text = (
+                f"{prediction.label} {prediction.confidence * 100:.1f}% "
+                f"({prediction.inference_ms:.1f} ms)"
+            )
+            print(
+                f"Prediction: class {prediction.index} ({prediction.label}), "
+                f"confidence {prediction.confidence * 100:.1f}%, "
+                f"inference {prediction.inference_ms:.3f} ms, "
+                f"capture-to-LED {response_ms:.3f} ms"
+            )
+            print(f"Top classes: {top_k_text(prediction, labels)}")
+
+            if args.log_csv:
+                append_log(args.log_csv, prediction, response_ms, args.camera)
+    except KeyboardInterrupt:
+        print("\nExiting...")
+    finally:
+        leds.close()
+        camera.release()
+        cv2.destroyAllWindows()
+
+
 def parse_led_pins(value: str) -> list[int]:
     try:
         pins = [int(pin.strip()) for pin in value.split(",") if pin.strip()]
@@ -527,6 +614,11 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     )
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--dry-run", action="store_true", help="Print GPIO actions instead of using pins.")
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="Open a USB webcam preview window. Press c/Space to classify and q to quit.",
+    )
     parser.add_argument("--check", action="store_true", help="Run one image sanity check and exit.")
     parser.add_argument(
         "--benchmark",
@@ -570,6 +662,10 @@ def main(argv: Iterable[str] = sys.argv[1:]) -> int:
 
     if args.benchmark > 0:
         run_benchmark(args, interpreter, labels, input_details)
+        return 0
+
+    if args.preview:
+        run_opencv_preview(args, interpreter, labels, input_details)
         return 0
 
     run_button_loop(args, interpreter, labels, input_details)
