@@ -493,12 +493,21 @@ def run_opencv_preview(args, interpreter, labels: list[str], input_details: dict
         raise RuntimeError(f"Could not open USB camera device {args.camera_device}")
 
     leds = LedBoard(args.led_pins, labels, args.dry_run)
+    button = None
+    if not args.dry_run:
+        from gpiozero import Button
+
+        button = Button(args.button_pin, pull_up=True, bounce_time=0.1)
+
     window_name = "Lab 10 USB Webcam Preview"
-    status_text = "Press c/Space to classify, q to quit"
+    status_text = "Press hardware button to classify, q to quit"
     led_off_at = 0.0
+    button_was_pressed = False
 
     print("Preview ready.")
-    print("Keyboard: c or Space = capture/classify, q = quit")
+    print(f"Button BCM GPIO: {args.button_pin}")
+    print("Hardware button = capture/classify")
+    print("Keyboard backup: c or Space = capture/classify, q = quit")
 
     try:
         while True:
@@ -527,7 +536,14 @@ def run_opencv_preview(args, interpreter, labels: list[str], input_details: dict
             if key in {ord("q"), 27}:
                 break
 
-            if key not in {ord("c"), ord(" ")}:
+            button_capture = False
+            if button is not None:
+                button_is_pressed = button.is_pressed
+                button_capture = button_is_pressed and not button_was_pressed
+                button_was_pressed = button_is_pressed
+
+            keyboard_capture = key in {ord("c"), ord(" ")}
+            if not button_capture and not keyboard_capture:
                 continue
 
             response_start = time.perf_counter()
@@ -564,6 +580,8 @@ def run_opencv_preview(args, interpreter, labels: list[str], input_details: dict
     except KeyboardInterrupt:
         print("\nExiting...")
     finally:
+        if button is not None:
+            button.close()
         leds.close()
         camera.release()
         cv2.destroyAllWindows()
