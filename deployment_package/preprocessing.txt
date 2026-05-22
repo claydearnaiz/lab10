@@ -1,0 +1,31 @@
+Preprocessing Recipe
+
+Task: Mulberry image classification
+Input image size: 224 x 224
+Input color order: RGB
+
+PyTorch tensor format:
+- NCHW
+- Shape: [1, 3, 224, 224]
+
+TFLite tensor format:
+- Check interpreter input details.
+- Most TFLite models use NHWC.
+- Expected shape is usually [1, 224, 224, 3].
+
+Resize:
+- Resize image to 224 x 224
+
+Normalization:
+- Convert image to float32
+- Scale pixel values to [0, 1]
+- Normalize using ImageNet mean and standard deviation
+
+Mean:
+[0.485, 0.456, 0.406]
+
+Standard deviation:
+[0.229, 0.224, 0.225]
+
+Class order:
+['Discolored', 'Healthy', 'Mold', 'Ripe', 'Unripe']

@@ -1,0 +1,8 @@
+Metric,Original PyTorch,ONNX,TFLite
+Model file size (MB),4.9694,4.8215,4.816
+Primary task metric (accuracy),1.0,1.0,1.0
+Max absolute output error vs. original,0.0,2.384185791015625e-06,2.1457672119140625e-06
+Prediction agreement rate (%),100.0,100.0,100.0
+Mean inference latency (ms/sample),49.561,7.973,7.196
+Runtime status,ok,ok,runtime ok
+FlexOps used,not applicable,not applicable,False

@@ -1,0 +1,5 @@
+numpy
+Pillow
+ai-edge-litert
+# Optional for PC webcam dry-runs:
+# opencv-python
