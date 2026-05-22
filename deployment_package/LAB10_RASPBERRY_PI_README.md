@@ -147,6 +147,14 @@ python lab10_pi_app.py --camera opencv --camera-device 0 --preview
 
 In preview mode, press the hardware button to classify the current frame. You can also press `c` or Space as a keyboard backup, and press `q` to quit.
 
+If the object is small in the camera view, use a center crop:
+
+```bash
+python lab10_pi_app.py --camera opencv --camera-device 0 --preview --crop-ratio 0.7
+```
+
+Keep the mulberry inside the yellow square. The model uses that center area for classification.
+
 The defaults are:
 
 ```text

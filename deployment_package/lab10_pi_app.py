@@ -84,8 +84,24 @@ def tensor_hw_and_layout(input_details: dict) -> tuple[int, int, str]:
     raise ValueError(f"Could not infer image layout from input shape {shape}")
 
 
-def preprocess_image(image: Image.Image, input_details: dict) -> np.ndarray:
+def center_crop_image(image: Image.Image, crop_ratio: float) -> Image.Image:
+    if crop_ratio >= 1.0:
+        return image
+
+    width, height = image.size
+    crop_size = int(min(width, height) * crop_ratio)
+    left = (width - crop_size) // 2
+    top = (height - crop_size) // 2
+    return image.crop((left, top, left + crop_size, top + crop_size))
+
+
+def preprocess_image(
+    image: Image.Image,
+    input_details: dict,
+    crop_ratio: float = 1.0,
+) -> np.ndarray:
     height, width, layout = tensor_hw_and_layout(input_details)
+    image = center_crop_image(image.convert("RGB"), crop_ratio)
     image = image.convert("RGB").resize((width, height), Image.BILINEAR)
 
     arr = np.asarray(image, dtype=np.float32) / 255.0
@@ -385,8 +401,9 @@ def run_prediction_once(
     labels: list[str],
     input_details: dict,
     image: Image.Image,
+    crop_ratio: float = 1.0,
 ) -> Prediction:
-    input_data = preprocess_image(image, input_details)
+    input_data = preprocess_image(image, input_details, crop_ratio)
     return classify(interpreter, input_data, labels)
 
 
@@ -394,7 +411,9 @@ def run_check(args, interpreter, labels: list[str], input_details: dict) -> None
     if args.image is None:
         raise ValueError("--check requires --image")
     image = Image.open(args.image).convert("RGB")
-    prediction = run_prediction_once(interpreter, labels, input_details, image)
+    prediction = run_prediction_once(
+        interpreter, labels, input_details, image, args.crop_ratio
+    )
     print(
         f"Prediction: class {prediction.index} ({prediction.label}), "
         f"confidence {prediction.confidence * 100:.1f}%"
@@ -407,7 +426,7 @@ def run_benchmark(args, interpreter, labels: list[str], input_details: dict) -> 
     source = make_image_source(args)
     try:
         image = source.capture_rgb()
-        input_data = preprocess_image(image, input_details)
+        input_data = preprocess_image(image, input_details, args.crop_ratio)
         times = []
 
         for _ in range(args.benchmark):
@@ -453,7 +472,9 @@ def run_button_loop(args, interpreter, labels: list[str], input_details: dict) -
                 saved_path = save_capture(image, args.save_captures)
                 print(f"Saved capture: {saved_path}")
 
-            prediction = run_prediction_once(interpreter, labels, input_details, image)
+            prediction = run_prediction_once(
+                interpreter, labels, input_details, image, args.crop_ratio
+            )
             response_ms = (time.perf_counter() - response_start) * 1000.0
 
             led_index = (
@@ -520,6 +541,18 @@ def run_opencv_preview(args, interpreter, labels: list[str], input_details: dict
                 led_off_at = 0.0
 
             display = frame.copy()
+            if args.crop_ratio < 1.0:
+                frame_h, frame_w = display.shape[:2]
+                crop_size = int(min(frame_w, frame_h) * args.crop_ratio)
+                left = (frame_w - crop_size) // 2
+                top = (frame_h - crop_size) // 2
+                cv2.rectangle(
+                    display,
+                    (left, top),
+                    (left + crop_size, top + crop_size),
+                    (0, 255, 255),
+                    2,
+                )
             cv2.putText(
                 display,
                 status_text,
@@ -554,7 +587,9 @@ def run_opencv_preview(args, interpreter, labels: list[str], input_details: dict
                 saved_path = save_capture(image, args.save_captures)
                 print(f"Saved capture: {saved_path}")
 
-            prediction = run_prediction_once(interpreter, labels, input_details, image)
+            prediction = run_prediction_once(
+                interpreter, labels, input_details, image, args.crop_ratio
+            )
             response_ms = (time.perf_counter() - response_start) * 1000.0
 
             led_index = (
@@ -630,6 +665,12 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
         default=0.0,
         help="Leave all LEDs off if the argmax confidence is below this value.",
     )
+    parser.add_argument(
+        "--crop-ratio",
+        type=float,
+        default=1.0,
+        help="Center-crop the camera image before resizing. Try 0.7 for webcam aiming.",
+    )
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--dry-run", action="store_true", help="Print GPIO actions instead of using pins.")
     parser.add_argument(
@@ -651,6 +692,9 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
 
 def main(argv: Iterable[str] = sys.argv[1:]) -> int:
     args = parse_args(argv)
+
+    if not 0.1 <= args.crop_ratio <= 1.0:
+        raise ValueError("--crop-ratio must be between 0.1 and 1.0")
 
     labels = load_labels(args.labels)
     load_start = time.perf_counter()
